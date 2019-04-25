@@ -7,20 +7,16 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using ADODB;
+using System.Data.SqlClient;
 
 namespace WindowsFormsDataBase
 {
     public partial class Form1 : Form
     {
-        object parms = null;
-        object recs = null;
-        public ADODB.Connection m_connDB = new ADODB.Connection();
-        public ADODB.Recordset rs = new ADODB.Recordset();
-        public ADODB.Command cmdDB = new ADODB.Command();
-        public string cnStr;
+        public string cnStr = "Initial Catalog=ATEP;Data Source=ACGB1AP23;User ID=StationATE;Password=maate";//ACGB1AP23
         public string query;
         public string sErrorString;
+        public string sRev;
 
         public enum enumDBStatus
         {
@@ -28,15 +24,7 @@ namespace WindowsFormsDataBase
             EmptyRecordset,
             FatalError,
         }
-        public struct tStoreProc
-        {
-            public string Name { get; set; }
-            public ADODB.DataTypeEnum Type { get; set; }
-            public ADODB.ParameterDirectionEnum Directional { get; set; }
-            public int Size { get; set; }
-            public string Value { get; set; }
-
-        }
+       
 
         public Form1()
         {
@@ -48,239 +36,217 @@ namespace WindowsFormsDataBase
         }
         private void Button1_Click(object sender, EventArgs e)
         {
-
-            //Label label1 = new Label();
-            var breturn = OpenDB();
-
-            if (breturn == enumDBStatus.OK)
-            {
-                label1.Text = "Data Base Connected";
-            }
-            else
-            {
-                label1.Text = "Data Base Not Connected";
-            }
-
-
+            label1.Text = OpenDB();
         }
 
-        public enumDBStatus OpenDB()
+        public string OpenDB()
         {
             //Connection string.
-            cnStr = "Provider=SQLOLEDB;Initial Catalog=ATEP;Data Source=ACGB1AP23;User ID=StationATE;Password=maate";//ACGB1AP23
-
-            //Connection via ConnectionString Property.
-            m_connDB.ConnectionString = cnStr;
+            
+            string sconnection = "Data Base Not Connected";
+            SqlConnection conn = new SqlConnection(cnStr);
             try
             {
-                // Do not initialize this variable here.
-                if (m_connDB.State == 0)
-                {
-                    m_connDB.Open(null, null, null, 0);
-                    m_connDB.Close();
-                    return enumDBStatus.OK;
-                }
-                else
-                {
-                    return enumDBStatus.FatalError;
-                }
+                conn.Open();
+                sconnection = "ServerVersion:"+Convert.ToString(conn.ServerVersion)+" State: "+ Convert.ToString(conn.State);
+                conn.Close();
+                return sconnection;
             }
-            catch (Exception message)
+            catch
             {
-                MessageBox.Show("Unable to open database.\r\n" + message, "(DB) Error");
-                return enumDBStatus.FatalError;
+                return sconnection;
             }
         }
-
-        public enumDBStatus ExecuteSQL(string sQuery)
+        public  string dBATEGetProfileProductionRev(String sStationType, String sProductName, String sProfileName)
         {
-            try
-            {
-                if (m_connDB.State == 0)
+            // 1. Create a new instance of the generated OpenAccessContext.
+            SqlConnection conn = new SqlConnection(cnStr);
+
+            //StationType = "MiniATE";
+            //sProductName = "RHU";
+            //sProfileName = "7.2_RHU_2K_Cell_PCSE_H_NewPA";
+
+
+            // 2. Get connection.
+            using (IDbConnection dbConnection = conn)
                 {
-                    //Set command active connection
-                    cmdDB.ActiveConnection = m_connDB;
-                    //Set SQL query statement
-                    cmdDB.CommandText = sQuery;
-                    //Execute
-                    cmdDB.Execute(out recs, ref parms, 0);
-                    return (enumDBStatus.OK);
-                }
-                else
-                {
-                    return (enumDBStatus.FatalError);
-                }
-            }
-            catch (Exception message)
-            {
-                MessageBox.Show("Unable to execute SQL statement.\r\n" + message, "(DB) Error");
-                return (enumDBStatus.FatalError);
-            }
-        }
-        public enumDBStatus QueryRecordCount(string sQuery, int p_lCount)
-        {
-            p_lCount = 0;
-            try
-            {
-                if (m_connDB.State == 0)
-                {
-                    rs.Open(sQuery, m_connDB, CursorTypeEnum.adOpenKeyset, LockTypeEnum.adLockReadOnly);
-                    p_lCount = rs.RecordCount;
-                    rs.Close();
-                    return (enumDBStatus.OK);
-                }
-                else
-                {
-                    return (enumDBStatus.FatalError);
-                }
-            }
-            catch (Exception message)
-            {
-                MessageBox.Show("Unable to execute SQL statement.\r\n" + message, "(DB) Error");
-                return (enumDBStatus.FatalError);
-            }
-        }
-
-        public enumDBStatus CloseDB()
-        {
-            try
-            {
-                //Close the connection
-
-                if (m_connDB.State == 1)
-                {
-                    m_connDB.Close();
-                    return (enumDBStatus.OK);
-                }
-                else
-                {
-                    return enumDBStatus.FatalError;
-                }
-
-            }
-            catch (Exception message)
-            {
-                MessageBox.Show("Unable to close database.\r\n" + message, "(DB) Error");
-                return (enumDBStatus.FatalError);
-            }
-        }
-
-        public enumDBStatus QueryStoredProcValue(string sStoreProcName, tStoreProc[] Parameters, tStoreProc[] ParametersOut)
-
-        {
-            //Create ADODB Recordset instance
-            object ParameterDB = null;
-            try
-            {
-                cmdDB.ActiveConnection = m_connDB;
-                cmdDB.CommandText = sStoreProcName;
-                cmdDB.CommandType = ADODB.CommandTypeEnum.adCmdStoredProc;
-
-                for (int i = 0; i < Parameters.Length; i++)
-                {
-                    ParameterDB = cmdDB.CreateParameter(Parameters[i].Name, Parameters[i].Type, Parameters[i].Directional, Parameters[i].Size, Parameters[i].Value);
-
-                    cmdDB.Parameters.Append(ParameterDB);
-                }
-
-                cmdDB.Execute(out recs, ref parms, 0);
-
-                int c = 0;
-
-                for (int i = 0; i < Parameters.Length; i++)
-                {
-                    if (Parameters[i].Directional == ADODB.ParameterDirectionEnum.adParamOutput) ;
+                    // 3. Initialize and execute OACommand.
+                    using (IDbCommand spCommand = dbConnection.CreateCommand())
                     {
+                    conn.Open();
+                    spCommand.CommandText = "prcATEGetProfileProductionRev";
+                    spCommand.CommandType = System.Data.CommandType.StoredProcedure;
 
-                        ParametersOut[c].Name = Parameters[i].Name;
-                        //ParametersOut[c].Value = cmdDB.Parameters.Item(i).Value;
-                        //ParametersOut[c].Size = cmdDB.Parameters.Item(i).Size;
-                        c++;
+                    // 4. Initialize parameters.
+                    
+                        IDbDataParameter StationType = spCommand.CreateParameter();
+                        StationType.ParameterName = "@StationType";
+                        StationType.DbType = System.Data.DbType.String;
+                        StationType.Direction = System.Data.ParameterDirection.Input;
+                        StationType.Value = sStationType;
+                        spCommand.Parameters.Add(StationType);
+
+
+                        IDbDataParameter Product = spCommand.CreateParameter();
+                        Product.ParameterName = "@Product";
+                        Product.Direction = System.Data.ParameterDirection.Input;
+                        Product.DbType = System.Data.DbType.String;
+                        Product.Size = 255;
+                        Product.Value = sProductName;
+                        spCommand.Parameters.Add(Product);
+
+                        IDbDataParameter Profile = spCommand.CreateParameter();
+                        Profile.ParameterName = "@Profile";
+                        Profile.Direction = System.Data.ParameterDirection.Input;
+                        Profile.DbType = System.Data.DbType.String;
+                        Profile.Size = 255;
+                        Profile.Value = sProfileName;
+                        spCommand.Parameters.Add(Profile);
+
+
+                        IDbDataParameter Rev = spCommand.CreateParameter();
+                        Rev.ParameterName = "@Rev";
+                        Rev.Direction = System.Data.ParameterDirection.Output;
+                        Rev.DbType = System.Data.DbType.String;
+                        Rev.Size = 50;
+                        Rev.Value = "--";
+                        spCommand.Parameters.Add(Rev);
+        
+                        spCommand.ExecuteNonQuery();
+
+                    // 5. Consume the out parameters and the return value.
+                    Console.WriteLine(Rev.Value);
+                        return Convert.ToString(Rev.Value);
                     }
                 }
-                return (enumDBStatus.OK);
-            }
-            catch (Exception message)
+            
+        }
+        public string dBGetValueString(String sStationType, String sProductName, String sProfileName, String sTaskName, String sIniFile, String sKey, String sRev)
+        {
+            // 1. Create a new instance of the generated OpenAccessContext.
+            SqlConnection conn = new SqlConnection(cnStr);
+                // 2. Get connection.
+                using (IDbConnection dbConnection = conn)
             {
-                sErrorString = "";
-
-                for (int i = 0; i < m_connDB.Errors.Count; i++)
+                // 3. Initialize and execute OACommand.
+                using (IDbCommand spCommand = dbConnection.CreateCommand())
                 {
-                    //sErrorString = sErrorString + m_connDB.Errors.Item(i).Description + "\r\n";
+                    conn.Open();
+                    spCommand.CommandText = "prcATEGetParameterValueUnit";
+                    spCommand.CommandType = System.Data.CommandType.StoredProcedure;
+
+                    // 4. Initialize parameters.
+
+                    IDbDataParameter StationType = spCommand.CreateParameter();
+                    StationType.ParameterName = "@StationType";
+                    StationType.DbType = System.Data.DbType.String;
+                    StationType.Direction = System.Data.ParameterDirection.Input;
+                    StationType.Value = sStationType;
+                    spCommand.Parameters.Add(StationType);
+
+
+                    IDbDataParameter Product = spCommand.CreateParameter();
+                    Product.ParameterName = "@Product";
+                    Product.Direction = System.Data.ParameterDirection.Input;
+                    Product.DbType = System.Data.DbType.String;
+                    Product.Size = 255;
+                    Product.Value = sProductName;
+                    spCommand.Parameters.Add(Product);
+
+                    IDbDataParameter Profile = spCommand.CreateParameter();
+                    Profile.ParameterName = "@Profile";
+                    Profile.Direction = System.Data.ParameterDirection.Input;
+                    Profile.DbType = System.Data.DbType.String;
+                    Profile.Size = 255;
+                    Profile.Value = sProfileName;
+                    spCommand.Parameters.Add(Profile);
+
+
+                   IDbDataParameter Task = spCommand.CreateParameter();
+                   Task.ParameterName = "@Task";
+                   Task.Direction = System.Data.ParameterDirection.Input;
+                   Task.DbType = System.Data.DbType.String;
+                   Task.Size = 255;
+                   Task.Value = sTaskName;
+                   spCommand.Parameters.Add(Task);
+
+
+
+                        IDbDataParameter IniFile = spCommand.CreateParameter();
+                        IniFile.ParameterName = "@IniFile";
+                        IniFile.Direction = System.Data.ParameterDirection.Input;
+                        IniFile.DbType = System.Data.DbType.String;
+                        IniFile.Size = 255;
+                        IniFile.Value = sIniFile;
+                        spCommand.Parameters.Add(IniFile);
+
+
+
+
+                        IDbDataParameter Parameter = spCommand.CreateParameter();
+                        Parameter.ParameterName = "@Parameter";
+                        Parameter.Direction = System.Data.ParameterDirection.Input;
+                        Parameter.DbType = System.Data.DbType.String;
+                        Parameter.Size = 255;
+                        Parameter.Value = sKey;
+                        spCommand.Parameters.Add(Parameter);
+
+                    IDbDataParameter Rev = spCommand.CreateParameter();
+                    Rev.ParameterName = "@Rev";
+                    Rev.Direction = System.Data.ParameterDirection.Input;
+                    Rev.DbType = System.Data.DbType.String;
+                    Rev.Size = 50;
+                    Rev.Value = sRev;
+                    spCommand.Parameters.Add(Rev);
+
+                        IDbDataParameter Value = spCommand.CreateParameter();
+                        Value.ParameterName = "@Value";
+                        Value.Direction = System.Data.ParameterDirection.Output;
+                        Value.DbType = System.Data.DbType.String;
+                        Value.Size = 50;
+                        Value.Value = "_";
+                        spCommand.Parameters.Add(Value);
+
+                        IDbDataParameter Unit = spCommand.CreateParameter();
+                        Unit.ParameterName = "@Unit";
+                        Unit.Direction = System.Data.ParameterDirection.Output;
+                        Unit.DbType = System.Data.DbType.String;
+                        Unit.Size = 50;
+                        Unit.Value = "--";
+                        spCommand.Parameters.Add(Unit);
+
+                        spCommand.ExecuteNonQuery();
+
+                    // 5. Consume the out parameters and the return value.
+                    Console.WriteLine(Value.Value);
+                    return Convert.ToString(Value.Value);
                 }
-
-                MessageBox.Show("Unable to get recordset from data base.\r\n" + message, "(DB) Error");
-
-                return (enumDBStatus.FatalError);
             }
-
 
         }
-
         private void Button1_Click_1(object sender, EventArgs e)
         {
-            string _psvalue = "";
-            DBSQL_GetDataBaseVer( _psvalue);
+            StationName.Text = "MiniATE";
+            ProductName.Text = "RHU";
+            ProfileName.Text = "7.2_RHU_2K_Cell_PCSE_H_NewPA";
+
+            sRev = dBATEGetProfileProductionRev(StationName.Text, ProductName.Text, ProfileName.Text);
+
+            Ver.Text = sRev;
         }
 
-        public int DBSQL_GetDataBaseVer(string psvalue)//sStationType, sProductName, sProfileName, psvalue): Long Public
+        private void Button1_Click_2(object sender, EventArgs e)
         {
-            String sStationType = "MiniATE";
-            String sProductName = "RHU";
-            String sProfileName = "3.15_RHU_WMTS";
-            tStoreProc[] Parametersout = new tStoreProc[1];
-            tStoreProc[] ParametersIn = new tStoreProc[4];
-            //var private vTemp = null;
+            StationName.Text = "MiniATE";
+            ProductName.Text = "RHU";
+            ProfileName.Text = "7.2_RHU_2K_Cell_PCSE_H_NewPA";
 
-            enumDBStatus lStatus;
+            string svalue = "";
+            svalue = dBGetValueString(StationName.Text, ProductName.Text, ProfileName.Text, "Gain & Ripple DL_HB", "TestData.ini", "Required_Gain", sRev);
+            Console.WriteLine(svalue);
+            sValue.Text = svalue;
 
-
-            ParametersIn[0].Name = "@StationType";
-            ParametersIn[0].Type = ADODB.DataTypeEnum.adVarChar;
-            ParametersIn[0].Directional = ADODB.ParameterDirectionEnum.adParamInput;
-            ParametersIn[0].Size = 255;
-            ParametersIn[0].Value = sStationType;
-
-            ParametersIn[1].Name = "@Product";
-            ParametersIn[1].Type = ADODB.DataTypeEnum.adVarChar;
-            ParametersIn[1].Directional = ADODB.ParameterDirectionEnum.adParamInput;
-            ParametersIn[1].Size = 255;
-            ParametersIn[1].Value = sProductName;
-
-            ParametersIn[2].Name = "@Profile";
-            ParametersIn[2].Type = ADODB.DataTypeEnum.adVarChar;
-            ParametersIn[2].Directional = ADODB.ParameterDirectionEnum.adParamInput;
-            ParametersIn[2].Size = 255;
-            ParametersIn[2].Value = sProfileName;
-
-            ParametersIn[3].Name = "@Rev";
-            ParametersIn[3].Type = ADODB.DataTypeEnum.adVarChar;
-            ParametersIn[3].Directional = ADODB.ParameterDirectionEnum.adParamOutput;
-            ParametersIn[3].Size = 50;
-            ParametersIn[3].Value = "--";
-
-
-            psvalue = "";
-
-            lStatus = QueryStoredProcValue("prcATEGetProfileProductionRev", ParametersIn, Parametersout);
-
-            if (lStatus == enumDBStatus.OK) 
-            { 
-                if (Parametersout[0].Value != "")
-                {
-                    psvalue = Parametersout[0].Value;
-                }
-                    
-                else
-                {
-                    psvalue = "";
-                    lStatus = enumDBStatus.EmptyRecordset;
-                }
-
-            }
-            return (Convert.ToInt32 (lStatus));
-           }
-        
+        }
     }
 
 }
